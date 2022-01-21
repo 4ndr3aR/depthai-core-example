@@ -370,7 +370,6 @@ extern "C"
         api_log("H.264/H.265 video encoders bitstream linking done");
     
         // Connect to device and start pipeline
-        //dai::Device device(pipeline);
         device = std::make_shared<dai::Device>(pipeline, dai::UsbSpeed::SUPER);
 
         api_log("DepthAI device created");
@@ -382,7 +381,7 @@ extern "C"
 
         api_log("Output queues created");
     
-        // The .h264 / .h265 files are raw stream files (not playable yet)
+        // The H.264/H.265 files are raw stream files (not playable yet)
 	std::string left_fn  = fname_prefix + std::string("left.h264" );
 	std::string color_fn = fname_prefix + std::string("color.h265");
 	std::string right_fn = fname_prefix + std::string("right.h264");
@@ -394,41 +393,9 @@ extern "C"
         v_info.outQ1 = outQ1;
         v_info.outQ2 = outQ2;
         v_info.outQ3 = outQ3;
-
-        // std::cout << outQ1 << " - " << v_info.outQ1 << std::endl;
-
-	/*    
-        v_info.videoFile1 = videoFile1;
-        v_info.videoFile2 = videoFile2;
-        v_info.videoFile3 = videoFile3;
-	*/
-
-        //cout << "Press Ctrl+C to stop encoding..." << endl;
-        /*
-        while(true)
-        {
-            auto out1 = outQ1->get<dai::ImgFrame>();
-            v_info.videoFile1.write((char*)out1->getData().data(), out1->getData().size());
-            auto out2 = outQ2->get<dai::ImgFrame>();
-            v_info.videoFile2.write((char*)out2->getData().data(), out2->getData().size());
-            auto out3 = outQ3->get<dai::ImgFrame>();
-            v_info.videoFile3.write((char*)out3->getData().data(), out3->getData().size());
-        }
-
-        cout << "To view the encoded data, convert the stream file (.h264/.h265) into a video file (.mp4), using a command below:" << endl;
-        cout << "ffmpeg -framerate 30 -i mono1.h264 -c copy mono1.mp4" << endl;
-        cout << "ffmpeg -framerate 30 -i mono2.h264 -c copy mono2.mp4" << endl;
-        cout << "ffmpeg -framerate 30 -i color.h265 -c copy color.mp4" << endl;
-        */
     }
     unsigned long api_get_video_frames()
     {
-        /*
-        std::cout << v_info.camRgb << std::endl;
-        std::cout << v_info.ve1    << std::endl;
-        std::cout << v_info.ve1Out << std::endl;
-        std::cout << v_info.outQ1  << std::endl;
-        */
             auto out1 = v_info.outQ1->get<dai::ImgFrame>();
             v_info.videoFile1.write((char*)out1->getData().data(), out1->getData().size());
             auto out2 = v_info.outQ2->get<dai::ImgFrame>();
