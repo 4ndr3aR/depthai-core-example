@@ -1,0 +1,1 @@
+/mnt/porcodiodo/cnr/depthai/depthai-android-unity-example/depthai-android-api/depthai-android-api/src/main/cpp/depthai_android_api.cpp

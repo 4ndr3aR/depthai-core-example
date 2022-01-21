@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.2)
 # Add depthai-core dependency
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/depthai-core EXCLUDE_FROM_ALL)
 
-# Create a project with name 'myapp'
-set(TARGET_NAME myapp)
+# Create a project with name 'depthai-android-api-standalone'
+set(TARGET_NAME depthai-android-api-standalone)
 project(${TARGET_NAME})
 
 # Dependencies (optional, only used for example)
@@ -12,8 +12,10 @@ find_package(OpenCV REQUIRED)
 
 # Add source files
 add_executable("${TARGET_NAME}"
-    src/main.cpp
+    src/depthai_android_api.cpp
 )
+
+add_definitions(-DPIPELINE_LOCAL_TEST)
 
 # Link with libraries
 target_link_libraries(${TARGET_NAME}
