@@ -253,6 +253,12 @@ extern "C"
    	std::string ext_storage_path = std::string(reinterpret_cast<char const*>(external_storage_path));
 	api_open_logfile(ext_storage_path);
 
+	#ifndef PIPELINE_LOCAL_TEST
+        // libusb
+        auto r = libusb_set_option(nullptr, LIBUSB_OPTION_ANDROID_JNIENV, jni_env);
+        api_log("libusb_set_option ANDROID_JAVAVM: %s", libusb_strerror(r));
+	#endif
+
         std::string fname_prefix = ext_storage_path + "/depthai-video-";
 
         // Create pipeline
@@ -333,7 +339,10 @@ extern "C"
         ve3->bitstream.link(ve3Out->input);
 
         api_log("H.264/H.265 video encoders bitstream linking done");
-   
+
+        #if 0
+	device = std::make_shared<dai::Device>(pipeline, dai::UsbSpeed::SUPER);
+        #endif
 	bool exception_thrown = false;
 	try
 	{
