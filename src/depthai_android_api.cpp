@@ -190,6 +190,43 @@ extern "C"
     }
 
 
+    // I can't find a base class with the getFps() method to pass both a
+    // dai::node::ColorCamera or a dai::node::MonoCamera without resorting to templates :(
+    int create_encoder(dai::Pipeline & pipeline, dai::Node::Output & source, uint16_t fps, /*std::tuple<uint16_t, uint16_t, uint16_t, dai::SensorResolution> & profile_tuple,*/ std::string & stream_name)
+    {
+	// Giving up... this function looks impossible to implement... too many errors, protected within this context, etc. etc. etc.
+	// Technical motivation here: https://stackoverflow.com/questions/2340281/check-if-a-string-contains-a-string-in-c/64899650#comment117451121_64899650
+
+/*
+        auto veLeft = pipeline.create<dai::node::VideoEncoder>();
+        auto veRgb = pipeline.create<dai::node::VideoEncoder>();
+        auto veRight = pipeline.create<dai::node::VideoEncoder>();
+    
+        auto veLeftOut = pipeline.create<dai::node::XLinkOut>();
+        auto veRgbOut = pipeline.create<dai::node::XLinkOut>();
+*/
+
+        // Create an encoder, consuming the frames and encoding them using H.265 encoding
+        //auto encoder = pipeline.createVideoEncoder();
+        auto encoder = pipeline.create<dai::node::VideoEncoder>();
+        // auto fps = profile_tuple[2];
+        // auto resolution = profile_tuple[3];
+        auto codec = (stream_name.find("265") != string::npos) ? dai::VideoEncoderProperties::Profile::H265_MAIN : dai::VideoEncoderProperties::Profile::H264_MAIN;
+        encoder->setDefaultProfilePreset(source.getFps(), codec);
+        source.Output->link(encoder.input);
+
+        // Create output
+        //auto output = pipeline.createXLinkOut();
+        auto output = pipeline.create<dai::node::XLinkOut>();
+        output->setStreamName(stream_name);
+        encoder->bitstream.link(output.input);
+
+        return std::tuple<std::shared_ptr<dai::node::VideoEncoder>, std::shared_ptr<dai::node::XLinkOut>>(encoder, output);
+    }
+
+
+
+
     int api_start_device_record_video(int rgbWidth, int rgbHeight, int disparityWidth, int disparityHeight, const char* external_storage_path)
     {
    	std::string ext_storage_path = std::string(external_storage_path);
