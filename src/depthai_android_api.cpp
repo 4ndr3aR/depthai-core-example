@@ -50,6 +50,9 @@ extern "C"
 
     std::vector<u_char> rgbImageBuffer, colorDisparityBuffer;
 
+
+    int color_fps = 15;
+    int mono_fps = 15;
     /*
     int disparityWidth = -1;
     int disparityHeight = -1;
@@ -64,7 +67,7 @@ extern "C"
     // Better handling for occlusions:
     std::atomic<bool> lr_check{false};
 
-    int recv_img_debug_verbosity = 100000;
+    int recv_img_debug_verbosity = 1000;
 
     struct video_info
     {
@@ -158,7 +161,8 @@ extern "C"
         camRgb->setPreviewSize(rgbWidth, rgbHeight);
         camRgb->setBoardSocket(dai::CameraBoardSocket::RGB);
         camRgb->setResolution(dai::ColorCameraProperties::SensorResolution::THE_1080_P);
-        camRgb->setInterleaved(true);
+        //camRgb->setInterleaved(true);
+	camRgb->setInterleaved(false);
         camRgb->setColorOrder(dai::ColorCameraProperties::ColorOrder::RGB);
 
         monoLeft->setResolution(dai::MonoCameraProperties::SensorResolution::THE_400_P);
@@ -313,11 +317,19 @@ extern "C"
         // Properties
         camRgb->setPreviewSize(rgbWidth, rgbHeight);
         camRgb->setResolution(dai::ColorCameraProperties::SensorResolution::THE_1080_P);
+        camRgb->setFps(color_fps);
         camRgb->setInterleaved(true);
         camRgb->setColorOrder(dai::ColorCameraProperties::ColorOrder::RGB);
 
+	/*
         monoLeft->setResolution(dai::MonoCameraProperties::SensorResolution::THE_720_P);
         monoRight->setResolution(dai::MonoCameraProperties::SensorResolution::THE_720_P);
+	*/
+
+        monoLeft->setResolution(dai::MonoCameraProperties::SensorResolution::THE_400_P);
+        monoLeft->setFps(mono_fps);
+        monoRight->setResolution(dai::MonoCameraProperties::SensorResolution::THE_400_P);
+        monoRight->setFps(mono_fps);
 
         stereo->initialConfig.setConfidenceThreshold(245);
         // Options: MEDIAN_OFF, KERNEL_3x3, KERNEL_5x5, KERNEL_7x7 (default)
@@ -335,37 +347,47 @@ extern "C"
 
 
 
-        auto ve1 = pipeline.create<dai::node::VideoEncoder>();
-        auto ve2 = pipeline.create<dai::node::VideoEncoder>();
-        auto ve3 = pipeline.create<dai::node::VideoEncoder>();
+        auto veLeft = pipeline.create<dai::node::VideoEncoder>();
+        auto veRgb = pipeline.create<dai::node::VideoEncoder>();
+        auto veRight = pipeline.create<dai::node::VideoEncoder>();
     
-        auto ve1Out = pipeline.create<dai::node::XLinkOut>();
-        auto ve2Out = pipeline.create<dai::node::XLinkOut>();
-        auto ve3Out = pipeline.create<dai::node::XLinkOut>();
+        auto veLeftOut = pipeline.create<dai::node::XLinkOut>();
+        auto veRgbOut = pipeline.create<dai::node::XLinkOut>();
+        auto veRightOut = pipeline.create<dai::node::XLinkOut>();
 
-        ve1Out->setStreamName("ve1Out");
-        ve2Out->setStreamName("ve2Out");
-        ve3Out->setStreamName("ve3Out");
-    
-        // Create encoders, one for each camera, consuming the frames and encoding them using H.264 / H.265 encoding
-        ve1->setDefaultProfilePreset(30, dai::VideoEncoderProperties::Profile::H264_MAIN);      // left
-        ve2->setDefaultProfilePreset(30, dai::VideoEncoderProperties::Profile::H265_MAIN);      // RGB
-        ve3->setDefaultProfilePreset(30, dai::VideoEncoderProperties::Profile::H264_MAIN);      // right
-        api_log("H.264/H.265 video encoders created");
-    
+
         // Linking
-        monoLeft->out.link(ve1->input);
-        camRgb->video.link(ve2->input);
-        monoRight->out.link(ve3->input);
+        monoLeft->out.link(veLeft->input);
+        camRgb->video.link(veRgb->input);
+        monoRight->out.link(veRight->input);
 
         api_log("H.264/H.265 video encoders linking done");
 
-        ve1->bitstream.link(ve1Out->input);
-        ve2->bitstream.link(ve2Out->input);
-        ve3->bitstream.link(ve3Out->input);
+        veLeft->bitstream.link(veLeftOut->input);
+        veRgb->bitstream.link(veRgbOut->input);
+        veRight->bitstream.link(veRightOut->input);
 
         api_log("H.264/H.265 video encoders bitstream linking done");
 
+
+        veLeftOut->setStreamName("veLeftOut");
+        veRgbOut->setStreamName("veRgbOut");
+        veRightOut->setStreamName("veRightOut");
+    
+        // Create encoders, one for each camera, consuming the frames and encoding them using H.264 / H.265 encoding
+	/*
+        veLeft->setDefaultProfilePreset(30, dai::VideoEncoderProperties::Profile::H264_MAIN);      // left
+        veRgb->setDefaultProfilePreset(30, dai::VideoEncoderProperties::Profile::H265_MAIN);      // RGB
+        veRight->setDefaultProfilePreset(30, dai::VideoEncoderProperties::Profile::H264_MAIN);      // right
+        api_log("H.264/H.265 video encoders created");
+	*/
+	/**/
+        veLeft->setDefaultProfilePreset(monoLeft->getFps(),  dai::VideoEncoderProperties::Profile::H265_MAIN);      // left
+        veRgb->setDefaultProfilePreset(camRgb->getFps(),    dai::VideoEncoderProperties::Profile::H265_MAIN);      // RGB
+        veRight->setDefaultProfilePreset(monoRight->getFps(), dai::VideoEncoderProperties::Profile::H265_MAIN);      // right
+        api_log("H.264/H.265 video encoders created - RGB-FPS: %f - L-FPS: %f - R-FPS: %f", camRgb->getFps(), monoLeft->getFps(), monoRight->getFps());
+	/**/
+    
         #if 0
 	device = std::make_shared<dai::Device>(pipeline, dai::UsbSpeed::SUPER);
         #endif
@@ -407,9 +429,9 @@ extern "C"
 
     
         // Output queues will be used to get the encoded data from the output defined above
-        auto outQ1 = device->getOutputQueue("ve1Out", 60, false);
-        auto outQ2 = device->getOutputQueue("ve2Out", 60, false);
-        auto outQ3 = device->getOutputQueue("ve3Out", 60, false);
+        auto outQ1 = device->getOutputQueue("veLeftOut", 1, false);
+        auto outQ2 = device->getOutputQueue("veRgbOut", 1, false);
+        auto outQ3 = device->getOutputQueue("veRightOut", 1, false);
 
         api_log("Output queues created");
 
@@ -422,9 +444,9 @@ extern "C"
 	auto pos = curr_date_time_str.find("."); 
 
         // The H.264/H.265 files are raw stream files (not playable yet)
-	std::string left_fn  = fname_prefix + curr_date_time_str.substr(0,pos) + std::string("-left.h264" );
+	std::string left_fn  = fname_prefix + curr_date_time_str.substr(0,pos) + std::string("-left.h265" );
 	std::string color_fn = fname_prefix + curr_date_time_str.substr(0,pos) + std::string("-color.h265");
-	std::string right_fn = fname_prefix + curr_date_time_str.substr(0,pos) + std::string("-right.h264");
+	std::string right_fn = fname_prefix + curr_date_time_str.substr(0,pos) + std::string("-right.h265");
         v_info.videoFile1 = std::ofstream(left_fn , std::ios::binary);
         v_info.videoFile2 = std::ofstream(color_fn, std::ios::binary);
         v_info.videoFile3 = std::ofstream(right_fn, std::ios::binary);
@@ -436,9 +458,9 @@ extern "C"
 
 
         // Output queue will be used to get the rgb frames from the output defined above
-        qRgb = device->getOutputQueue("rgb", 4, false);
-        qDisparity = device->getOutputQueue("disparity", 4, false);
-        qDepth = device->getOutputQueue("depth", 4, false);
+        qRgb = device->getOutputQueue("rgb", 1, false);
+        qDisparity = device->getOutputQueue("disparity", 1, false);
+        qDepth = device->getOutputQueue("depth", 1, false);
 
         v_info.qRgb = qRgb;
         v_info.qDisparity = qDisparity;
