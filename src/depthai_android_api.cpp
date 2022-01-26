@@ -50,8 +50,10 @@ extern "C"
 
     std::vector<u_char> rgbImageBuffer, colorDisparityBuffer;
 
+    /*
     int disparityWidth = -1;
     int disparityHeight = -1;
+    */
 
     // Closer-in minimum depth, disparity range is doubled (from 95 to 190):
     std::atomic<bool> extended_disparity{false};
@@ -61,6 +63,8 @@ extern "C"
     std::atomic<bool> subpixel{false};
     // Better handling for occlusions:
     std::atomic<bool> lr_check{false};
+
+    int recv_img_debug_verbosity = 100000;
 
     struct video_info
     {
@@ -120,13 +124,12 @@ extern "C"
         v_info.logfile << logfile_fname + " starting..." << std::endl;
     }
 
-    void api_start_device(int rgbWidth, int rgbHeight, const char* external_storage_path)
+    void api_start_device(int rgbWidth, int rgbHeight, int disparityWidth, int disparityHeight, const char* external_storage_path)
     {
 	api_open_logfile(std::string(external_storage_path));
 
-        api_log("api_start_device() - received RGB size for Unity images: %d x %d", rgbWidth, rgbHeight);
-        disparityWidth = rgbWidth;
-        disparityHeight = rgbHeight;
+        api_log("api_start_device() - received images RGB size from Unity: %d x %d", rgbWidth, rgbHeight);
+        api_log("api_start_device() - received images disparity size from Unity: %d x %d", disparityWidth, disparityHeight);
 
 	#ifndef PIPELINE_LOCAL_TEST
         // libusb
@@ -201,9 +204,15 @@ extern "C"
     unsigned int api_get_rgb_image(unsigned char* unityImageBuffer)
     {
         auto inRgb = qRgb->get<dai::ImgFrame>();
+        auto frame_no = inRgb->getSequenceNum();
         auto imgData = inRgb->getData();
 
-        // api_log("api_get_rgb_image() received image with size: %d x %d", inRgb->getWidth(), inRgb->getHeight());
+	if (inRgb.get() and frame_no % recv_img_debug_verbosity == 0)
+	{
+		api_log("api_get_rgb_image() received inRgb ptr: %p", inRgb.get());
+		api_log("api_get_rgb_image() received image with size: %d x %d", inRgb->getWidth(), inRgb->getHeight());
+		api_log("api_get_rgb_image() received frame no: %d - frame imgData size: %d", frame_no, imgData.size());
+	}
 
         // Convert from RGB to RGBA for Unity
         int rgb_index = 0;
@@ -224,20 +233,26 @@ extern "C"
         std::copy(rgbImageBuffer.begin(), rgbImageBuffer.end(), unityImageBuffer);
 
         // Return the image number
-        return inRgb->getSequenceNum();
+        return frame_no;
     }
 
     unsigned int api_get_color_disparity_image(unsigned char* unityImageBuffer)
     {
         auto inDisparity = qDisparity->get<dai::ImgFrame>();;
+        auto frame_no = inDisparity->getSequenceNum();
         auto disparityData = inDisparity->getData();
         uint8_t colorPixel[3];
 
-        // api_log("api_get_color_disparity_image() received image with size: %d x %d", inDisparity->getWidth(), inDisparity->getHeight());
+	if (inDisparity and frame_no % recv_img_debug_verbosity == 0)
+	{
+		api_log("api_get_color_disparity_image() received inDisparity ptr: %p", inDisparity.get());
+		api_log("api_get_color_disparity_image() received image with size: %d x %d", inDisparity->getWidth(), inDisparity->getHeight());
+		api_log("api_get_color_disparity_image() received frame no: %d - frame disparityData size: %d", frame_no, disparityData.size());
+	}
 
         // Convert Disparity to RGBA format for Unity
         int argb_index = 0;
-        for (int i = 0; i < disparityWidth*disparityHeight; i++)
+        for (int i = 0; i < inDisparity->getWidth()*inDisparity->getHeight(); i++)
         {
             // Convert the disparity to color
             colorDisparity(colorPixel, disparityData[i], maxDisparity);
@@ -252,18 +267,17 @@ extern "C"
         std::copy(colorDisparityBuffer.begin(), colorDisparityBuffer.end(), unityImageBuffer);
 
         // Return the image number
-        return inDisparity->getSequenceNum();
+        return frame_no;
     }
 
 
-    int api_start_device_record_video(int rgbWidth, int rgbHeight, const char* external_storage_path)
+    int api_start_device_record_video(int rgbWidth, int rgbHeight, int disparityWidth, int disparityHeight, const char* external_storage_path)
     {
    	std::string ext_storage_path = std::string(external_storage_path);
 	api_open_logfile(ext_storage_path);
 
-        api_log("api_start_device() - received RGB size for Unity images: %d x %d", rgbWidth, rgbHeight);
-        disparityWidth = rgbWidth;
-        disparityHeight = rgbHeight;
+        api_log("api_start_device_record_video() - received images RGB size from Unity: %d x %d", rgbWidth, rgbHeight);
+        api_log("api_start_device_record_video() - received images disparity size from Unity: %d x %d", disparityWidth, disparityHeight);
 
 	#ifndef PIPELINE_LOCAL_TEST
         // libusb
@@ -393,9 +407,9 @@ extern "C"
 
     
         // Output queues will be used to get the encoded data from the output defined above
-        auto outQ1 = device->getOutputQueue("ve1Out", 30, true);
-        auto outQ2 = device->getOutputQueue("ve2Out", 30, true);
-        auto outQ3 = device->getOutputQueue("ve3Out", 30, true);
+        auto outQ1 = device->getOutputQueue("ve1Out", 60, false);
+        auto outQ2 = device->getOutputQueue("ve2Out", 60, false);
+        auto outQ3 = device->getOutputQueue("ve3Out", 60, false);
 
         api_log("Output queues created");
 
@@ -473,8 +487,10 @@ extern "C"
             api_write_one_video_frame(v_info.outQ3, v_info.videoFile3);
 
 	    v_info.frame_counter++;
-	    if (v_info.frame_counter % 1000 == 0 or true)
+	    if (v_info.frame_counter % 1000 == 0)
+	    {
  	           api_log("Read video frame no.: %lu", v_info.frame_counter);
+	    }
 
             return v_info.frame_counter;
     }
@@ -491,11 +507,15 @@ int main()
         uint64_t dispFrameNum = 0;
         int RGBWidth  = 640;
         int RGBHeight = 480;
+	int disparityWidth  = 1280;
+	int disparityHeight = 720;
         std::string external_storage_path = "/tmp/";
 
-        int retval = api_start_device_record_video(RGBWidth, RGBHeight, external_storage_path.c_str());
+        int retval = api_start_device_record_video(RGBWidth, RGBHeight, disparityWidth, disparityHeight, external_storage_path.c_str());
 	if (retval == -1)
+	{
 		return retval;
+	}
 
         unsigned char* _rgbImgPtr  = new unsigned char[rgbImageBuffer.size()];
         unsigned char* _dispImgPtr = new unsigned char[colorDisparityBuffer.size()];
