@@ -25,6 +25,7 @@
 #define log(...) __android_log_print(ANDROID_LOG_INFO,LOG_TAG, __VA_ARGS__)
 
 //#define ENCODE_RGB_L_R
+//#define DEQUEUE_WITH_TRYGET
 
 #ifndef PIPELINE_LOCAL_TEST
 JNIEnv* jni_env = NULL;
@@ -64,7 +65,7 @@ extern "C"
     std::atomic<bool> lr_check{false};
 
     int recv_img_debug_verbosity = 1000;
-    const bool debug_pkt_queues  = true;
+    const bool debug_pkt_queues  = false;
 
     struct stream_info
     {
@@ -129,10 +130,20 @@ extern "C"
         api_log("Opening logfile: %s", logfile_fname.c_str());
         logfile << logfile_fname + " starting..." << std::endl;
     }
+    std::shared_ptr<dai::ImgFrame> api_dequeue(std::shared_ptr<dai::DataOutputQueue> outQ)
+    {
+        #ifdef DEQUEUE_WITH_TRYGET
+        auto out = outQ->tryGet<dai::ImgFrame>();
+        #else
+        auto out = outQ->get<dai::ImgFrame>();
+        #endif
+        return out;
+    }
 
     unsigned int api_get_rgb_image(unsigned char* unityImageBuffer)
     {
-        auto inRgb = qRgb->tryGet<dai::ImgFrame>();
+        //auto inRgb = qRgb->tryGet<dai::ImgFrame>();
+        auto inRgb = api_dequeue(qRgb);
         if (!inRgb)
                 return -1;
         auto frame_no = inRgb->getSequenceNum();
@@ -168,7 +179,9 @@ extern "C"
 
     unsigned int api_get_color_disparity_image(unsigned char* unityImageBuffer)
     {
-        auto inDisparity = qDisparity->tryGet<dai::ImgFrame>();
+        //auto inDisparity = qDisparity->tryGet<dai::ImgFrame>();
+        auto inDisparity  = api_dequeue(qDisparity);
+        //std::cout << "disp: " << typeid(inDisparity).name() << std::endl;
         if (!inDisparity)
                 return -1;
         auto frame_no = inDisparity->getSequenceNum();
@@ -491,11 +504,12 @@ extern "C"
         auto & recv_frames = stream.recv_frames;
         auto & lost_frames = stream.lost_frames;
 
-        if (queue_name != "")
+        if (queue_name != "" and debug_pkt_queues)
         {
                 api_log("Getting and writing one video frame from queue: %s", queue_name.c_str());
         }
-        auto out = outQ->tryGet<dai::ImgFrame>();
+        //auto out = outQ->tryGet<dai::ImgFrame>();
+        auto out = api_dequeue(outQ);
         if (!out)
         {
                 if (debug_pkt_queues)
@@ -518,19 +532,13 @@ extern "C"
     }
     unsigned long api_get_video_frames()
     {
-std::cout << "PRE rgb" << std::endl;
             api_write_one_video_frame(Rgb);
-std::cout << "POST rgb" << std::endl;
 	    #ifdef ENCODE_RGB_L_R
             api_write_one_video_frame(Left);
             api_write_one_video_frame(Right);
 	    #else
-std::cout << "PRE disp" << std::endl;
             api_write_one_video_frame(Disp);
-std::cout << "POST disp" << std::endl;
-std::cout << "PRE rr" << std::endl;
             api_write_one_video_frame(RectRight);
-std::cout << "POST rr" << std::endl;
 	    #endif
 
 	    frame_counter++;
