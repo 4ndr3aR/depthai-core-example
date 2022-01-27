@@ -24,6 +24,8 @@
 #define LOG_TAG "depthaiAndroid"
 #define log(...) __android_log_print(ANDROID_LOG_INFO,LOG_TAG, __VA_ARGS__)
 
+//#define ENCODE_RGB_L_R
+
 #ifndef PIPELINE_LOCAL_TEST
 JNIEnv* jni_env = NULL;
 JavaVM* JVM;
@@ -91,38 +93,6 @@ extern "C"
     std::string fname_prefix;
     std::stringstream curr_date_time;
 
-    #if 0
-    struct video_info
-    {
-        std::shared_ptr<dai::DataOutputQueue> outQRgb;
-        std::ofstream videoFileRgb;
-
-	#ifdef ENCODE_RGB_L_R
-        std::shared_ptr<dai::DataOutputQueue> outQLeft;
-        std::ofstream videoFileLeft;
-        std::shared_ptr<dai::DataOutputQueue> outQRight;
-        std::ofstream videoFileRight;
-	#else
-        std::shared_ptr<dai::DataOutputQueue> outQDisp;
-        std::ofstream videoFileDisp;
-        std::shared_ptr<dai::DataOutputQueue> outQRectRight;
-        std::ofstream videoFileRectRight;
-	#endif
-
-        std::shared_ptr<dai::DataOutputQueue> qRgb;
-        std::shared_ptr<dai::DataOutputQueue> qDisparity;
-        //std::shared_ptr<dai::DataOutputQueue> qDepth;
-
-        std::ofstream logfile;
-
-	std::uint64_t frame_counter = 0;
-    };
-
-    video_info v_info;
-
-    #endif
-
-
     void api_stop_device()
     {
         logfile.close();
@@ -168,7 +138,7 @@ extern "C"
         auto frame_no = inRgb->getSequenceNum();
         auto imgData = inRgb->getData();
 
-	if (inRgb.get() and frame_no % recv_img_debug_verbosity == 0)
+	if (inRgb.get() and (frame_no % recv_img_debug_verbosity == 0) or debug_pkt_queues)
 	{
 		api_log("api_get_rgb_image() received inRgb ptr: %p", inRgb.get());
 		api_log("api_get_rgb_image() received image with size: %d x %d", inRgb->getWidth(), inRgb->getHeight());
@@ -205,7 +175,7 @@ extern "C"
         auto disparityData = inDisparity->getData();
         uint8_t colorPixel[3];
 
-	if (inDisparity and frame_no % recv_img_debug_verbosity == 0)
+	if (inDisparity and (frame_no % recv_img_debug_verbosity == 0 or debug_pkt_queues))
 	{
 		api_log("api_get_color_disparity_image() received inDisparity ptr: %p", inDisparity.get());
 		api_log("api_get_color_disparity_image() received image with size: %d x %d", inDisparity->getWidth(), inDisparity->getHeight());
@@ -299,10 +269,12 @@ extern "C"
 
         stereo->initialConfig.setConfidenceThreshold(245);
 
+        #if 0
 	#ifndef ENCODE_RGB_L_R
 	auto xoutRectRight = pipeline.create<dai::node::XLinkOut>();
 	xoutRectRight->setStreamName("rectRight");
 	stereo->rectifiedRight.link(xoutRectRight->input);
+	#endif
 	#endif
 
 
@@ -331,14 +303,14 @@ extern "C"
         auto veRightOut = pipeline.create<dai::node::XLinkOut>();
 
         // Linking
-        monoLeft->out.link(veLeft->input);
         camRgb->video.link(veRgb->input);
+        monoLeft->out.link(veLeft->input);
         monoRight->out.link(veRight->input);
 
         api_log("H.264/H.265 video encoders linking done");
 
-        veLeft->bitstream.link(veLeftOut->input);
         veRgb->bitstream.link(veRgbOut->input);
+        veLeft->bitstream.link(veLeftOut->input);
         veRight->bitstream.link(veRightOut->input);
 
         api_log("H.264/H.265 video encoders bitstream linking done");
@@ -363,14 +335,16 @@ extern "C"
         auto veRectRightOut = pipeline.create<dai::node::XLinkOut>();
 
         // Linking
-        stereo->disparity.link(veDisp->input);
         camRgb->video.link(veRgb->input);
-        monoRight->out.link(veRectRight->input);
+        stereo->disparity.link(veDisp->input);
+        //monoRight->out.link(veRectRight->input);
+        stereo->rectifiedRight.link(veRectRight->input);
+
 
         api_log("H.264/H.265 video encoders linking done");
 
-        veDisp->bitstream.link(veDispOut->input);
         veRgb->bitstream.link(veRgbOut->input);
+        veDisp->bitstream.link(veDispOut->input);
         veRectRight->bitstream.link(veRectRightOut->input);
 
         api_log("H.264/H.265 video encoders bitstream linking done");
@@ -482,6 +456,7 @@ extern "C"
         qRgb = device->getOutputQueue("rgb", 1, false);
         qDisparity = device->getOutputQueue("disparity", 1, false);
         //qDepth = device->getOutputQueue("depth", 1, false);
+        //qRectRight = device->getOutputQueue("rectRight", 1, false);
 
         //v_info.qRgb = qRgb;
         //v_info.qDisparity = qDisparity;
